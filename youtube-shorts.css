@@ -1,0 +1,40 @@
+/* Hide Shorts shelf on homepage — old and new YouTube DOM */
+ytd-rich-shelf-renderer[is-shorts],
+ytd-reel-shelf-renderer,
+ytd-reel-item-renderer,
+grid-shelf-view-model {
+    display: none !important;
+}
+
+ytd-rich-section-renderer:has(ytd-reel-shelf-renderer),
+ytd-rich-section-renderer:has(ytd-rich-shelf-renderer[is-shorts]),
+ytd-rich-section-renderer:has(grid-shelf-view-model) {
+    display: none !important;
+}
+
+/* Hide Shorts filter chip in search/home */
+yt-chip-cloud-chip-renderer[title="Shorts"] {
+    display: none !important;
+}
+
+/* Hide Shorts entry in the left sidebar guide */
+ytd-guide-entry-renderer:has(a[href="/shorts"]),
+ytd-mini-guide-entry-renderer:has(a[href="/shorts"]),
+a[title="Shorts"] {
+    display: none !important;
+}
+
+/* Hide ad items structurally detectable by CSS */
+ytd-rich-item-renderer:has(ytd-display-ad-renderer),
+ytd-rich-item-renderer:has(ytd-ad-slot-renderer),
+ytd-rich-item-renderer:has(ytd-promoted-sparkles-web-renderer),
+ytd-rich-item-renderer:has(ytd-promoted-video-renderer),
+ytd-rich-item-renderer[is-ad] {
+    display: none !important;
+}
+
+/* Applied by content.js for duration/slop-filtered items */
+ytd-rich-item-renderer[data-slop-hidden="1"] {
+    display: none !important;
+}
+

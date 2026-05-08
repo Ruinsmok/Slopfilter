@@ -10,22 +10,95 @@
   <div class="popup">
     <h2 class="title">Slop Filterer</h2>
 
-    <section class="section">
-      <label class="label" for="min-duration">Minimum video length</label>
-      <div class="duration-row">
-        <input
-          id="min-duration"
-          class="duration-input"
-          type="number"
-          min="0"
-          max="600"
-          step="1"
-          placeholder="3"
-        />
-        <span class="unit">min</span>
-      </div>
-      <p class="hint">Videos shorter than this are hidden. Set to 0 to disable.</p>
-    </section>
+    <div class="tabs" role="tablist">
+      <button class="tab active" role="tab" data-tab="youtube">YouTube</button>
+      <button class="tab" role="tab" data-tab="instagram">Instagram</button>
+      <button class="tab" role="tab" data-tab="tiktok">TikTok</button>
+    </div>
+
+    <div class="tab-panel active" id="tab-youtube">
+      <section class="section">
+        <div class="toggle-row">
+          <span class="toggle-label">Hide Shorts</span>
+          <label class="switch">
+            <input type="checkbox" id="hide-shorts" />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="toggle-row">
+          <span class="toggle-label">Filter by duration</span>
+          <label class="switch">
+            <input type="checkbox" id="duration-enabled" />
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="duration-row" id="duration-row">
+          <label class="label" for="min-duration">Minimum length</label>
+          <div class="duration-input-row">
+            <input
+              id="min-duration"
+              class="duration-input"
+              type="number"
+              min="0"
+              max="600"
+              step="1"
+              placeholder="3"
+            />
+            <span class="unit">min</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="toggle-row">
+          <span class="toggle-label">Hide slop titles</span>
+          <label class="switch">
+            <input type="checkbox" id="slop-enabled" />
+            <span class="slider"></span>
+          </label>
+        </div>
+        <p class="hint">Hides videos with clickbait patterns in the title.</p>
+      </section>
+    </div>
+
+    <div class="tab-panel" id="tab-instagram">
+      <section class="section">
+        <div class="toggle-row">
+          <span class="toggle-label">Block Reels</span>
+          <label class="switch">
+            <input type="checkbox" id="hide-ig-reels" />
+            <span class="slider"></span>
+          </label>
+        </div>
+        <p class="hint">Hides the Reels nav entry and blocks the Reels page on Instagram.</p>
+      </section>
+      <section class="section">
+        <div class="toggle-row">
+          <span class="toggle-label">Block Explore</span>
+          <label class="switch">
+            <input type="checkbox" id="hide-ig-explore" />
+            <span class="slider"></span>
+          </label>
+        </div>
+        <p class="hint">Hides the Explore nav entry and blocks the Explore page on Instagram.</p>
+      </section>
+    </div>
+
+    <div class="tab-panel" id="tab-tiktok">
+      <section class="section">
+        <div class="toggle-row">
+          <span class="toggle-label">Block TikTok</span>
+          <label class="switch">
+            <input type="checkbox" id="hide-tiktok" />
+            <span class="slider"></span>
+          </label>
+        </div>
+        <p class="hint">Blocks TikTok with a full-page overlay.</p>
+      </section>
+    </div>
 
     <div class="status" id="status" aria-live="polite"></div>
   </div>
