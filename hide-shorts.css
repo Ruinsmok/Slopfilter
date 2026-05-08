@@ -1,0 +1,28 @@
+/* Hide Shorts shelf on homepage */
+ytd-rich-shelf-renderer[is-shorts],
+ytd-rich-shelf-renderer[is-shorts] *,
+ytd-reel-shelf-renderer,
+ytd-reel-shelf-renderer * {
+    display: none !important;
+    pointer-events: none !important;
+    visibility: hidden !important;
+}
+
+ytd-rich-section-renderer:has(ytd-reel-shelf-renderer) {
+    display: none !important;
+}
+
+/* Hide ad items structurally detectable by CSS */
+ytd-rich-item-renderer:has(ytd-display-ad-renderer),
+ytd-rich-item-renderer:has(ytd-ad-slot-renderer),
+ytd-rich-item-renderer:has(ytd-promoted-sparkles-web-renderer),
+ytd-rich-item-renderer:has(ytd-promoted-video-renderer),
+ytd-rich-item-renderer[is-ad] {
+    display: none !important;
+}
+
+/* Applied by content.js for duration/slop-filtered items */
+ytd-rich-item-renderer[data-slop-hidden="1"] {
+    display: none !important;
+}
+

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Slop Filterer</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="popup">
+    <h2 class="title">Slop Filterer</h2>
+
+    <section class="section">
+      <label class="label" for="min-duration">Minimum video length</label>
+      <div class="duration-row">
+        <input
+          id="min-duration"
+          class="duration-input"
+          type="number"
+          min="0"
+          max="600"
+          step="1"
+          placeholder="3"
+        />
+        <span class="unit">min</span>
+      </div>
+      <p class="hint">Videos shorter than this are hidden. Set to 0 to disable.</p>
+    </section>
+
+    <div class="status" id="status" aria-live="polite"></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
