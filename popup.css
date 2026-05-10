@@ -192,3 +192,17 @@ input:checked + .slider::before {
 .tab-panel.active {
   display: flex;
 }
+
+.export-btn {
+  cursor: pointer;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: #1a9e3f;
+  margin-right: 6px;
+  margin-bottom: 4px;
+}
+.export-btn:hover { opacity: 0.85; }

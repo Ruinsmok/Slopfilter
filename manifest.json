@@ -7,7 +7,7 @@
     "default_title": "Slop Filterer",
     "default_icon": "icon.png"
   },
-  "permissions": ["storage", "scripting", "tabs"],
+  "permissions": ["storage", "scripting", "tabs", "downloads"],
   "host_permissions": [
     "*://www.youtube.com/*",
     "*://www.instagram.com/*",

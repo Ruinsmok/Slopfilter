@@ -17,6 +17,7 @@
     slopEnabled: true,
   };
 
+  // Load saved settings and run an initial scan.
   chrome.storage.sync.get(Object.values(KEYS), (result) => {
     CONFIG.minDurationSeconds = result[KEYS.duration] ?? DEFAULT_MIN_SECONDS;
     CONFIG.durationEnabled = result[KEYS.durationEnabled] ?? true;
@@ -24,6 +25,7 @@
     rescan();
   });
 
+  // Re-evaluate all cards whenever the user changes a setting.
   chrome.storage.onChanged.addListener((changes) => {
     if (KEYS.duration in changes) CONFIG.minDurationSeconds = changes[KEYS.duration].newValue ?? DEFAULT_MIN_SECONDS;
     if (KEYS.durationEnabled in changes) CONFIG.durationEnabled = changes[KEYS.durationEnabled].newValue ?? true;
@@ -48,8 +50,10 @@
     signalModel: null,
   };
 
+  // Cache hide/show decisions by videoId to avoid re-evaluating unchanged cards.
   const decisionCache = new Map();
 
+  // Extracts a stable video identifier (v= param or /shorts/ path) from a card.
   function getVideoId(item) {
     const a = item.querySelector(
       "a#thumbnail[href], a.ytd-thumbnail[href], " +
@@ -64,6 +68,7 @@
     }
   }
 
+  // Converts a "MM:SS" or "HH:MM:SS" duration string into total seconds.
   function parseDuration(text) {
     const parts = text.trim().split(":").map(Number);
     if (parts.some(isNaN) || parts.length < 2) return null;
@@ -71,6 +76,7 @@
     return parts[0] * 3600 + parts[1] * 60 + parts[2];
   }
 
+  // Returns true if the card contains a YouTube ad renderer element.
   function isAd(item) {
     return (
       item.hasAttribute("is-ad") ||
@@ -81,6 +87,7 @@
     );
   }
 
+  // Returns true if the video's duration badge is below the configured minimum.
   function isTooShort(item) {
     if (!CONFIG.durationEnabled) return false;
     const badge = item.querySelector(
@@ -95,6 +102,7 @@
     return seconds !== null && seconds < CONFIG.minDurationSeconds;
   }
 
+  // Returns true if the video title matches any known clickbait pattern.
   function isSlopContent(item) {
     if (!CONFIG.slopEnabled) return false;
     const titleEl = item.querySelector(
@@ -108,10 +116,12 @@
     return false;
   }
 
+  // Returns true if the card should be hidden (ad, too short, or slop title).
   function shouldHide(item) {
     return isAd(item) || isTooShort(item) || isSlopContent(item);
   }
 
+  // Evaluates a single card, using cached decisions when possible.
   function evaluateItem(item) {
     const videoId = getVideoId(item);
     const cached = item.dataset.slopVideoId;
@@ -135,11 +145,13 @@
     applyDecision(item, hide);
   }
 
+  // Writes the decision result onto the element as data attributes.
   function stamp(item, videoId, hide) {
     item.dataset.slopVideoId = videoId;
     item.dataset.slopDecided = hide ? "hide" : "show";
   }
 
+  // Shows or hides a card element based on the hide flag.
   function applyDecision(item, hide) {
     if (hide) {
       item.style.setProperty("display", "none", "important");
@@ -148,6 +160,7 @@
     }
   }
 
+  // Watches a card with a MutationObserver until its video link resolves, then evaluates it.
   function waitForContent(item) {
     if (item.dataset.slopWaiting) return;
     item.dataset.slopWaiting = "1";
@@ -161,10 +174,12 @@
     mo.observe(item, { childList: true, subtree: true, attributes: true });
   }
 
+  // Evaluates all video cards currently present in the DOM.
   function scanAll() {
     document.querySelectorAll("ytd-rich-item-renderer").forEach(evaluateItem);
   }
 
+  // Clears the decision cache and re-evaluates every card (called after settings change).
   function rescan() {
     decisionCache.clear();
     document.querySelectorAll("ytd-rich-item-renderer").forEach((el) => {
@@ -174,6 +189,7 @@
     });
   }
 
+  // Watches for new cards added by infinite scroll and evaluates them immediately.
   const observer = new MutationObserver((mutations) => {
     for (const m of mutations) {
       for (const node of m.addedNodes) {
@@ -204,9 +220,11 @@
 
   scanAll();
 
+  // Re-scan after YouTube's client-side navigation and page data updates.
   document.addEventListener("yt-navigate-finish", rescan);
   document.addEventListener("yt-page-data-updated", rescan);
 
+  // Delayed scans to catch cards that render after the initial DOM settle.
   setTimeout(scanAll, 1500);
   setTimeout(scanAll, 4000);
 })();
