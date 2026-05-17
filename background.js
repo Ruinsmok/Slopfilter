@@ -52,16 +52,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     }
   });
 
-  // Download the thumbnail to shorts-dataset/<label>/<videoId>.jpg.
-  if (thumbnailUrl && thumbnailUrl.startsWith("http")) {
-    chrome.downloads.download({
-      url: thumbnailUrl,
-      filename: `shorts-dataset/${label}/${videoId}.jpg`,
-      conflictAction: "overwrite",
-      saveAs: false,
-    });
-  }
-
   sendResponse({ ok: true });
   return true;
 });

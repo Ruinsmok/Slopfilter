@@ -4,21 +4,25 @@
 
   const CONFIG = { enabled: false };
 
-  // Selectors that identify normal video cards (non-Shorts) in homepage shelves.
-  const CARD_SELECTORS = [
-    "ytd-rich-item-renderer:has(a#thumbnail[href*='/watch?v='])",
-    "ytd-rich-item-renderer:has(a.ytLockupMetadataViewModelTitle[href*='/watch?v='])",
-  ];
+  // Walks up from every watch-link to its ytd-rich-item-renderer card.
+  // Uses only a.ytLockupMetadataViewModelTitle — YouTube's new DOM puts the
+  // href there, not on a#thumbnail.
+  function getAllVideoCards() {
+    const cards = new Set();
+    document.querySelectorAll("a.ytLockupMetadataViewModelTitle").forEach((a) => {
+      const card = a.closest("ytd-rich-item-renderer");
+      if (card) cards.add(card);
+    });
+    return cards;
+  }
 
   // Extracts videoId, title, and thumbnail URL from a normal video card element.
   function getCardData(card) {
-    const thumbEl = card.querySelector("img#img, img.yt-core-image");
+    const imgEl = card.querySelector("yt-thumbnail-view-model img, img#img, img.yt-core-image");
     const titleEl = card.querySelector(
-      "#video-title, .ytLockupMetadataViewModelTitleText, yt-formatted-string#video-title"
+      ".ytLockupMetadataViewModelTitleText, a.ytLockupMetadataViewModelTitle, h3 span"
     );
-    const linkEl = card.querySelector(
-      "a#thumbnail[href*='/watch?v='], a.ytLockupMetadataViewModelTitle[href*='/watch?v=']"
-    );
+    const linkEl = card.querySelector("a.ytLockupMetadataViewModelTitle");
 
     const href = linkEl?.getAttribute("href") || "";
     let videoId = "";
@@ -26,14 +30,15 @@
       videoId = new URL(href, location.origin).searchParams.get("v") || "";
     } catch {}
     const title = titleEl?.textContent?.trim() || "";
-    const thumbnailUrl = thumbEl?.src || "";
+    const thumbnailUrl = imgEl?.src || "";
 
     return { videoId, title, thumbnailUrl };
   }
 
-  // Returns the thumbnail anchor element within a card, used as the overlay target.
+  // Returns the thumbnail wrapper within a card, used as the overlay mount point.
+  // New lockup DOM uses yt-thumbnail-view-model instead of ytd-thumbnail.
   function getThumbnailEl(card) {
-    return card.querySelector("a#thumbnail, ytd-thumbnail");
+    return card.querySelector("yt-thumbnail-view-model, ytd-thumbnail");
   }
 
   // Removes the label overlay from a card and cleans up its inline positioning.
@@ -119,11 +124,7 @@
 
   // Runs applyToCard on every normal video card currently in the DOM.
   function applyAll() {
-    const cards = [];
-    for (const sel of CARD_SELECTORS) {
-      document.querySelectorAll(sel).forEach((c) => cards.push(c));
-    }
-    [...new Set(cards)].forEach(applyToCard);
+    getAllVideoCards().forEach(applyToCard);
   }
 
   // Strips all label overlays from the page when label mode is turned off.
