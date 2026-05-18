@@ -9,28 +9,48 @@ Build a Chrome extension that automatically detects and hides AI-generated "slop
 
 ---
 
+## GPU Configuration
+
+| Decision | Choice | Reason |
+|---|---|---|
+| GPU | RTX 5070 Laptop (CUDA 13.0, PyTorch 2.11+cu130) | Already configured, CUDA available |
+| Scope | Training + inference | <1GB VRAM for both models combined; 10–20× faster inference |
+| Precision | BF16 everywhere | Blackwell tensor cores; stable range vs FP16; half VRAM |
+| Batching | Debounced batch per scroll event (~100ms window) | GPU parallelism; eliminates per-card overhead |
+| OCR framework | EasyOCR (PyTorch-native) | Single CUDA context; no PaddlePaddle conflict |
+| Compilation | `torch.compile()` on NLP model | ~20–30% inference speedup; warmup at server start |
+| Fallback | CPU if GPU OOM at startup | Server always functional even under VRAM pressure |
+
+---
+
 ## Architecture
 
 ```
 Browser (Chrome Extension)
 │
-├── content.js / background.js
-│   └── POST /classify { title, thumbnailUrl }
+├── content.js — MutationObserver detects new cards
+│   └── debounce 100ms → collect batch
+│                │
+│   background.js proxies fetch (content scripts
+│   cannot call localhost directly)
 │                │
 │                ▼
 │        localhost:7272 (FastAPI)
 │                │
+│    POST /classify-batch [{ title, thumbnailUrl }, ...]
+│                │
 │       ┌────────┴────────┐
 │       ▼                 ▼
-│   NLP model         OCR pipeline
-│  (title text)    (thumbnail image)
-│       │                 │
+│   NLP model         EasyOCR pipeline
+│  (DistilBERT        (thumbnail image
+│   BF16, compiled)    → text → classifier)
+│       │                 │         BF16
 │       └────────┬────────┘
 │            Combined
-│             score
-│           hide / show
+│             score per item
+│           hide / show each card
 │
-└── Fallback: regex rules if server is unreachable
+└── Fallback: regex rules if /health fails
 ```
 
 ---
@@ -80,23 +100,24 @@ slopfilter/
 
 ## Phases
 
-### Phase 1 — Restructure (1–2 hours)
-- [ ] Move all extension files into `extension/`
-- [ ] Update `manifest.json` paths if needed (all files are flat so no path changes required after move)
-- [ ] Create `server/`, `training/`, `data/labeled/`, `data/raw/`, `data/processed/`
-- [ ] Move `dataset.json` → `data/labeled/dataset.json`
-- [ ] Add `server/requirements.txt` with initial deps: `fastapi uvicorn paddleocr paddlepaddle transformers torch pillow requests`
-- [ ] Add `.gitignore` entries for `data/raw/`, `server/models/`, `.venv/`
+### Phase 1 — Restructure ✓
+- [x] Move all extension files into `extension/` (includes `popup.css`, `make-model.py` → `training/`)
+- [x] Update `manifest.json` paths if needed (all files are flat so no path changes required after move)
+- [x] Create `server/`, `training/`, `data/labeled/`, `data/raw/`, `data/processed/`
+- [x] Move `dataset.json` → `data/labeled/dataset.json`
+- [x] Add `server/requirements.txt` with initial deps: `fastapi uvicorn easyocr transformers torch pillow requests scikit-learn numpy`
+- [x] Add `.gitignore` entries for `data/raw/`, `server/models/`, `.venv/`
 
 ---
 
-### Phase 2 — Local inference server skeleton (2–3 hours)
-- [ ] `server/main.py`: FastAPI with two routes:
-  - `GET /health` → `{ status: "ok", models_loaded: bool }`
-  - `POST /classify` → `{ title, thumbnailUrl }` → `{ score: float, label: "slop"|"ok", signals: [...] }`
-- [ ] Stub `nlp.py` and `ocr.py` — return random scores initially so the extension can be wired up
-- [ ] Wire extension: in `background.js`, after receiving `LABEL_SHORT`, also expose a `CLASSIFY` message path; in `content.js`, replace `signalModel: null` with a call to the server via `background.js` (content scripts can't fetch localhost directly — must proxy through background)
-- [ ] Fallback: if `/health` fails, silently fall back to existing regex rules
+### Phase 2 — Local inference server skeleton ✓
+- [x] `server/main.py`: FastAPI with `/health` and `/classify-batch`, GPU init with CPU fallback, warmup call on lifespan
+- [x] `server/classifier.py`: `classify_batch()` combining NLP + OCR scores
+- [x] `server/nlp.py`: stub returning 0.5 per title
+- [x] `server/ocr.py`: stub returning None per URL (classifier falls back to NLP-only)
+- [x] `extension/background.js`: `CLASSIFY_BATCH` message handler proxies to server
+- [x] `extension/content.js`: `probeServer()` on load, debounced `flushBatch()` queues non-ad/non-duration cards, server decisions override regex decisions in `decisionCache`
+- [x] Fallback: `serverAvailable = false` silently disables queuing; regex rules remain active
 
 ---
 
@@ -132,32 +153,35 @@ slopfilter/
 
 **Steps:**
 - [ ] `training/build_dataset.py` — merge sources, deduplicate by videoId, split 80/10/10 train/val/test
-- [ ] `training/train_nlp.py` — HuggingFace `Trainer`, binary cross-entropy, 3 epochs
+- [ ] `training/train_nlp.py` — HuggingFace `Trainer`, BF16 via `fp16=False, bf16=True` in `TrainingArguments`, binary cross-entropy, 3 epochs
 - [ ] Target metrics: **F1 > 0.80** on val set before wiring into server
 - [ ] Save to `server/models/nlp/`
-- [ ] Implement `server/nlp.py` — load model, tokenize title, return `{ score, matched_signals }`
-
-**Fallback inside nlp.py:** if model isn't loaded, run existing regex patterns from `content.js` as a rule-based fallback so the server is always functional.
+- [ ] Implement `server/nlp.py`:
+  - Load model → `.to(device)` → `torch.compile(model)`
+  - Inference: `torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16)`
+  - Accept a list of titles, return list of scores (batch path)
+- [ ] Fallback inside `nlp.py`: if model not loaded, run regex patterns as rule-based scorer
 
 ---
 
 ### Phase 5 — OCR pipeline (4–6 hours)
 
-**OCR engine:** PaddleOCR (handles stylized fonts, busy backgrounds, mixed case far better than Tesseract)
+**OCR engine:** EasyOCR (PyTorch-native — single CUDA context with NLP model, no PaddlePaddle conflict)
 
 **Steps:**
 - [ ] `server/ocr.py`:
-  1. Download thumbnail from URL (cache by URL hash in `/tmp/slop_thumbs/`)
-  2. Run PaddleOCR — extract all text blocks with confidence scores
-  3. Filter blocks with confidence < 0.6
-  4. Concatenate remaining text → feed to text classifier
-- [ ] Text classifier on OCR output: same DistilBERT approach as Phase 4, or simpler TF-IDF + logistic regression if OCR text is too short for transformer tokenization
-- [ ] `training/train_ocr_classifier.py` — train on OCR text extracted from labeled thumbnails
+  1. Init: `easyocr.Reader(['en'], gpu=True)` — loads onto same CUDA device as NLP model
+  2. Download thumbnail from URL (cache by URL hash in `%TEMP%\slop_thumbs\` on Windows)
+  3. Run contrast enhancement via PIL `ImageEnhance.Contrast(img).enhance(1.8)` before OCR (improves dark-on-dark text)
+  4. Extract text blocks, filter confidence < 0.6
+  5. Concatenate remaining text → feed to text classifier (BF16 autocast)
+- [ ] Text classifier on OCR output: same DistilBERT approach as Phase 4 (already on GPU, already compiled)
+- [ ] `training/train_ocr_classifier.py` — train on OCR text extracted from labeled thumbnails, same BF16 training config
 
 **OCR diversity mitigation:**
-- Use PaddleOCR's `use_angle_cls=True` to handle rotated text
-- Run on both original and contrast-enhanced image (PIL `ImageEnhance.Contrast`) for dark-on-dark text
-- If OCR returns < 3 words, skip OCR signal and rely on NLP only — don't let empty OCR poison the score
+- EasyOCR handles rotated and stylized text natively (built-in CRAFT + CRNN)
+- Contrast enhancement pass covers dark-on-dark thumbnail text
+- If OCR returns < 3 words, skip OCR signal — don't let empty OCR poison the combined score
 
 ---
 
@@ -165,14 +189,14 @@ slopfilter/
 
 - [ ] `server/classifier.py`:
   ```python
-  def classify(title, thumbnail_url):
-      nlp_score = nlp.score(title)          # 0.0–1.0
-      ocr_score = ocr.score(thumbnail_url)  # 0.0–1.0, or None if OCR skipped
-      if ocr_score is None:
-          final = nlp_score
-      else:
-          final = 0.6 * nlp_score + 0.4 * ocr_score  # weight title higher
-      return { "score": final, "label": "slop" if final > 0.65 else "ok" }
+  def classify_batch(items):  # items: [{ title, thumbnailUrl }]
+      nlp_scores = nlp.score_batch([i["title"] for i in items])        # GPU batch
+      ocr_scores = ocr.score_batch([i["thumbnailUrl"] for i in items]) # GPU batch, None if <3 words
+      results = []
+      for nlp_s, ocr_s in zip(nlp_scores, ocr_scores):
+          final = nlp_s if ocr_s is None else 0.6 * nlp_s + 0.4 * ocr_s
+          results.append({ "score": final, "label": "slop" if final > 0.65 else "ok" })
+      return results
   ```
 - [ ] Threshold (`0.65`) should be tunable from the popup UI — expose as a sensitivity slider
 - [ ] Log misclassified examples to `data/labeled/corrections.json` for future retraining
@@ -191,7 +215,7 @@ slopfilter/
 
 | Risk | Mitigation |
 |---|---|
-| PaddleOCR accuracy on stylized fonts | Test on 50 diverse thumbnails before committing; EasyOCR is drop-in alternative |
+| EasyOCR accuracy on heavily stylized fonts | Contrast enhancement pre-pass; CRAFT detector handles most cases; synthetic augmentation fills gaps |
 | Too few labeled examples for OCR classifier | Synthetic data augmentation (Phase 3); active learning via existing labeler |
 | Server startup friction for end users | `start.bat` / `start.sh` + tray icon wrapper (later) |
 | YouTube DOM changes breaking selectors | Existing observers already handle this; low risk short term |

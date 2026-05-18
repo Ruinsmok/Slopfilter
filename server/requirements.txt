@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+easyocr
+transformers
+torch
+pillow
+requests
+scikit-learn
+numpy

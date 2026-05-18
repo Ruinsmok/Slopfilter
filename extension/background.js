@@ -33,11 +33,26 @@ function injectForTab(tab) {
   else if (tab.url.includes("tiktok.com")) injectTikTok(tab.id);
 }
 
-// ── Label mode dataset handling ───────────────────────────────────────────────
+// ── Server communication ──────────────────────────────────────────────────────
 
-// Receives LABEL_SHORT messages from the labeler content script,
-// persists metadata to local storage, and downloads the thumbnail image.
+const SERVER = "http://localhost:7272";
+
+// Single message listener handles both CLASSIFY_BATCH and LABEL_SHORT.
+// Content scripts cannot fetch localhost directly, so CLASSIFY_BATCH is
+// proxied here where fetch to an arbitrary URL is permitted.
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg.type === "CLASSIFY_BATCH") {
+    fetch(`${SERVER}/classify-batch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(msg.payload.map(({ title, thumbnailUrl }) => ({ title, thumbnailUrl }))),
+    })
+      .then((r) => r.json())
+      .then((results) => sendResponse({ results }))
+      .catch(() => sendResponse({ results: null }));
+    return true;
+  }
+
   if (msg.type !== "LABEL_SHORT") return false;
   const { videoId, title, thumbnailUrl, label } = msg.payload;
   if (!videoId) return false;

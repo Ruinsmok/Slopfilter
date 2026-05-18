@@ -121,6 +121,72 @@
     return isAd(item) || isTooShort(item) || isSlopContent(item);
   }
 
+  // ── Server batch classification (async refinement layer) ─────────────────────
+
+  let serverAvailable = null; // null = unchecked, true/false after first probe
+  const pendingBatch = new Map(); // videoId → card element
+  let batchTimer = null;
+
+  // Probes /health once; marks serverAvailable so we skip queueing if server is down.
+  async function probeServer() {
+    try {
+      const r = await fetch("http://localhost:7272/health", { signal: AbortSignal.timeout(1500) });
+      serverAvailable = r.ok;
+    } catch {
+      serverAvailable = false;
+    }
+  }
+
+  // Adds a card to the pending batch and arms the debounce timer.
+  function queueForServer(item) {
+    if (serverAvailable === false) return;
+    const videoId = getVideoId(item);
+    if (!videoId) return;
+    pendingBatch.set(videoId, item);
+    clearTimeout(batchTimer);
+    batchTimer = setTimeout(flushBatch, 100);
+  }
+
+  // Sends the accumulated batch to the background proxy, then applies server decisions.
+  async function flushBatch() {
+    if (!pendingBatch.size) return;
+    const snapshot = [...pendingBatch.entries()];
+    pendingBatch.clear();
+
+    const payload = snapshot.map(([, card]) => {
+      const imgEl = card.querySelector("yt-thumbnail-view-model img, img#img, img.yt-core-image");
+      const titleEl = card.querySelector(
+        "#video-title, #video-title-link, yt-formatted-string#video-title, " +
+        "a.ytLockupMetadataViewModelTitle span, a.ytLockupMetadataViewModelTitle"
+      );
+      return {
+        title: (titleEl?.getAttribute("title") || titleEl?.textContent || "").trim(),
+        thumbnailUrl: imgEl?.src || "",
+      };
+    });
+
+    let response;
+    try {
+      response = await chrome.runtime.sendMessage({ type: "CLASSIFY_BATCH", payload });
+    } catch {
+      serverAvailable = false;
+      return;
+    }
+
+    if (!response?.results) return;
+
+    response.results.forEach((result, i) => {
+      const [videoId, card] = snapshot[i];
+      if (!card.isConnected) return;
+      const hide = result.label === "slop";
+      decisionCache.set(videoId, hide ? "hide" : "show");
+      stamp(card, videoId, hide);
+      applyDecision(card, hide);
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+
   // Evaluates a single card, using cached decisions when possible.
   function evaluateItem(item) {
     const videoId = getVideoId(item);
@@ -143,6 +209,10 @@
     decisionCache.set(videoId, hide ? "hide" : "show");
     stamp(item, videoId, hide);
     applyDecision(item, hide);
+
+    // Queue for server refinement unless the card is already definitively hidden
+    // by an ad or duration rule (server only improves slop detection).
+    if (!isAd(item) && !isTooShort(item)) queueForServer(item);
   }
 
   // Writes the decision result onto the element as data attributes.
@@ -218,7 +288,8 @@
     attributeFilter: ["is-ad"],
   });
 
-  scanAll();
+  // Probe server availability before first scan so queueForServer knows whether to fire.
+  probeServer().then(scanAll);
 
   // Re-scan after YouTube's client-side navigation and page data updates.
   document.addEventListener("yt-navigate-finish", rescan);

@@ -1,2 +1,8 @@
 .agents
 .claude
+.venv/
+data/raw/
+data/processed/
+server/models/
+__pycache__/
+*.pyc
